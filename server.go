@@ -132,7 +132,7 @@ func main() {
 
 		sCmd := redisClient.Get("crash")
 		if sCmd.Err() != nil {
-			fmt.Fprintf(writer, "Could not ready any crash counters: %q\n", cmd.Err().Error())
+			fmt.Fprintf(writer, "Could not ready any crash counters: %q\n", sCmd.Err().Error())
 			return
 		}
 
