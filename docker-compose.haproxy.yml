@@ -1,7 +1,7 @@
 version: "3"
 services:
   web:
-    image: teasdalep/echo-headers-service:v3
+    image: teasdalep/echo-headers-service:v4
     deploy:
       replicas: 5
       resources:
@@ -12,16 +12,19 @@ services:
         condition: on-failure
     ports:
       - "8001:8001"
+    environment:
+      - SERVICE_PORTS=8001
     networks:
       - webnet
   visualizer:
     image: dockersamples/visualizer:stable
+    environment:
+      - SERVICE_PORTS=8080
     ports:
       - "8080:8080"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock"
     deploy:
-      replicas: 2
       placement:
         constraints: [node.role == manager]
     networks:
@@ -38,5 +41,26 @@ services:
     command: redis-server --appendonly yes
     networks:
       - webnet
+  proxy:
+    image: dockercloud/haproxy
+    # depends_on ignored in stack swarm mode version 3 Compose file
+    depends_on:
+      - redis
+      - web
+      - visualizer
+    environment:
+      # default is roundrobin
+      - BALANCE=leastconn
+#      - HEALTH_CHECK=
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - 80:80
+    networks:
+      - webnet
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+
 networks:
   webnet:

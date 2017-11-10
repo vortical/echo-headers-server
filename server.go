@@ -43,12 +43,17 @@ func (m *Metrics) AddSuccess() {
 }
 
 func (m *Metrics) calcHealth() float32 {
+	if m.Requests == 0 {
+		return 1.0
+	}
 	return 1.0 - float32(m.Errors)/float32(m.Requests)
 }
 
 func main() {
 
 	metrics := &Metrics{}
+	metrics.Health = metrics.calcHealth()
+
 	redisClient := NewRedisClient()
 
 	port := flag.Int("port", 8001, "port to run on (defaults to 8001)")
@@ -88,10 +93,23 @@ func main() {
 	})
 
 	http.HandleFunc("/metrics/health", func(writer http.ResponseWriter, req *http.Request) {
-		if metrics.Health < 0.75 {
-			writer.WriteHeader(http.StatusServiceUnavailable)
 
+		if metrics.Requests > 0 && metrics.Health < 0.75 {
+			writer.WriteHeader(http.StatusServiceUnavailable)
+			// if this happens, we have no way to recover
+			fmt.Printf("Health call failed with result %f\n", metrics.Health)
+			go func() {
+				for {
+					time.Sleep(1 * time.Second)
+					// heal it back to threshold slowly
+					metrics.AddSuccess()
+					if metrics.Health >= 0.75 {
+						return
+					}
+				}
+			}()
 		} else {
+			fmt.Printf("Health call succeeded with result %f\n", metrics.Health)
 			writer.WriteHeader(http.StatusOK)
 		}
 		body, _ := json.Marshal(metrics.Health)
@@ -100,6 +118,9 @@ func main() {
 
 	http.HandleFunc("/headers", func(writer http.ResponseWriter, req *http.Request) {
 		fmt.Fprintf(writer, "Method[%s] Url[%s] Protocol[%s]\n", req.Method, req.URL.String(), req.Proto)
+
+		fmt.Fprint(writer, "v4\n")
+
 		for key, value := range req.Header {
 			fmt.Fprintf(writer, "Header[%q] = %q\n", key, value)
 		}
